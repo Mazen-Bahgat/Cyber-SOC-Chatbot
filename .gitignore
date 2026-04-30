@@ -1,0 +1,14 @@
+cisc886-cyber-soc-chatbot/data/
+cisc886-cyber-soc-chatbot/data_samples/
+cisc886-cyber-soc-chatbot/deployment/
+cisc886-cyber-soc-chatbot/emr_failed_logs/
+cisc886-cyber-soc-chatbot/terraform/.terraform/
+cisc886-cyber-soc-chatbot/terraform/.terraform.lock.hcl
+cisc886-cyber-soc-chatbot/terraform/terraform.tfstate
+cisc886-cyber-soc-chatbot/terraform/terraform.tfstate.backup
+cisc886-cyber-soc-chatbot/witfoo_precinct6_100m
+*.pem
+*.tfstate
+*.tfstate.*
+*.pdf
+
