@@ -7,6 +7,7 @@ Cyber-Soc-Chatbot/terraform/.terraform.lock.hcl
 Cyber-Soc-Chatbot/terraform/terraform.tfstate
 Cyber-Soc-Chatbot/terraform/terraform.tfstate.backup
 Cyber-Soc-Chatbot/witfoo_precinct6_100m
+Screenshots/
 *.pem
 *.tfstate
 *.tfstate.*
