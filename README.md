@@ -62,25 +62,6 @@ aws configure
 
 ## Repository Structure
 
-```
-Cyber-SOC-Chatbot/
-├── README.md                          # This file
-├── vpc/
-│   └── 25dtg4-vpc.tf                  # Terraform VPC config (optional)
-├── preprocessing/
-│   └── 25dtg4_pyspark_preprocessing.py  # PySpark preprocessing pipeline
-├── fine_tuning/
-│   └── finetune_tinyllama_qlora_V2.py   # Fine-tuning notebook/script
-├── deployment/
-│   ├── Modelfile                        # Ollama model definition
-│   └── openwebui.service                # systemd service file
-└── data/
-    ├── train_50k.jsonl                  # Training split (50K samples)
-    └── validation_5k.jsonl             # Validation split (5K samples)
-```
-
-## Repository Structure
-
 ```text
 Cyber-SOC-Chatbot/
 ├── README.md                                      # Main project documentation with setup, execution, and replication steps.
@@ -123,6 +104,7 @@ Cyber-SOC-Chatbot/
     ├── tokenizer.model                            # Tokenizer model file.
     ├── tokenizer_config.json                      # Tokenizer metadata and settings.
     └── README.md                                  # Auto-generated metadata for the final adapter.
+```
 
 ---
 
