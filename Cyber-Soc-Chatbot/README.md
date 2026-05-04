@@ -14,8 +14,8 @@ Cyber-Soc-Chatbot/
 │
 ├── spark/                                     # Apache Spark preprocessing code used on AWS EMR.
 │   ├── preprocess_witfoo.py                   # PySpark pipeline that converts the raw WitFoo cybersecurity dataset into instruction-tuning JSONL data.
-│   │   └── generate_eda_figures.py                # Generates EDA figures such as label distribution, message length distribution, and split counts.
-│   │
+│   └── generate_eda_figures.py                # Generates EDA figures such as label distribution, message length distribution, and split counts.
+│   
 └── finetuning/                # QLoRA fine-tuning, testing, and GGUF export scripts
     ├── finetune_tinyllama_qlora.py
     ├── finetune_tinyllama_qlora_50K.py
