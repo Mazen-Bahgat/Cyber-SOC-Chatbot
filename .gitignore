@@ -12,4 +12,8 @@ Screenshots/
 *.tfstate
 *.tfstate.*
 *.pdf
+models/
+Cyber-Soc-Chatbot/finetuning/unsloth_compiled_cache
+
+
 
