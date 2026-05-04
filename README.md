@@ -63,7 +63,7 @@ aws configure
 ## Repository Structure
 
 ```
-25dtg4-cloud-project/
+Cyber-SOC-Chatbot/
 ├── README.md                          # This file
 ├── vpc/
 │   └── 25dtg4-vpc.tf                  # Terraform VPC config (optional)
@@ -78,6 +78,56 @@ aws configure
     ├── train_50k.jsonl                  # Training split (50K samples)
     └── validation_5k.jsonl             # Validation split (5K samples)
 ```
+
+## Repository Structure
+
+```text
+Cyber-SOC-Chatbot/
+├── README.md                                      # Main project documentation with setup, execution, and replication steps.
+├── .gitignore                                     # Excludes virtual environments, caches, credentials, and large temporary files.
+│
+├── Cyber-Soc-Chatbot/                             # Main implementation folder for the AWS, Spark, fine-tuning, and deployment pipeline.
+│   ├── README.md                                  # Additional project notes and execution details for the implementation folder.
+│   │
+│   ├── terraform/                                 # Terraform infrastructure-as-code for provisioning AWS resources.
+│   │   ├── main.tf                                # Defines the custom VPC, subnets, security groups, S3 bucket, IAM roles, and EMR resources.
+│   │   ├── variables.tf                           # Declares configurable variables such as netID, AWS region, key pair, and allowed IP CIDR.
+│   │   └── outputs.tf                             # Prints useful AWS resource IDs and names after Terraform deployment.
+│   │
+│   ├── spark/                                     # Apache Spark preprocessing code used on AWS EMR.
+│   │   ├── preprocess_witfoo.py                   # PySpark pipeline that converts the raw WitFoo cybersecurity dataset into instruction-tuning JSONL data.
+│   │   └── generate_eda_figures.py                # Generates EDA figures such as label distribution, message length distribution, and split counts.
+│   │
+│   ├── finetuning/                                # Fine-tuning, model testing, and GGUF export scripts.
+│   │   ├── finetune_tinyllama_qlora.py            # QLoRA fine-tuning script for the initial 10K training run.
+│   │   ├── finetune_tinyllama_qlora_50K.py        # QLoRA fine-tuning script for the final 50K training run.
+│   │   ├── GGUF_Script.py                         # Exports the fine-tuned LoRA adapter to GGUF format for Ollama deployment.
+│   │   └── test_model.py                          # Tests the fine-tuned model locally using sample cybersecurity prompts.
+│   │
+│   └── models/                                    # Stores exported GGUF model artifacts before upload to S3 or Ollama deployment.
+│       └── cyber-soc-tinyllama-gguf-50k_gguf/     # Final GGUF deployment folder containing the Ollama Modelfile and quantized model.
+│           ├── Modelfile                          # Ollama model definition used to create the deployed chatbot model.
+│           └── tinyllama-chat.Q4_K_M.gguf         # Quantized fine-tuned TinyLlama model used by Ollama.
+│
+├── cyber-soc-tinyllama-lora-10k/                  # LoRA adapter from the initial 10K-sample fine-tuning validation run.
+│   ├── adapter_config.json                        # Configuration describing the LoRA adapter architecture and settings.
+│   ├── adapter_model.safetensors                  # Fine-tuned LoRA adapter weights from the 10K run.
+│   ├── chat_template.jinja                        # Chat template used by the tokenizer during inference.
+│   ├── special_tokens_map.json                    # Mapping of special tokens required by the tokenizer.
+│   ├── tokenizer.json                             # Tokenizer vocabulary and processing configuration.
+│   ├── tokenizer.model                            # Tokenizer model file.
+│   ├── tokenizer_config.json                      # Tokenizer metadata and settings.
+│   └── README.md                                  # Auto-generated adapter metadata file.
+│
+└── cyber-soc-tinyllama-lora-50k/                  # Final LoRA adapter trained on the 50K dataset and used for deployment.
+    ├── adapter_config.json                        # Configuration describing the final LoRA adapter.
+    ├── adapter_model.safetensors                  # Final fine-tuned LoRA adapter weights.
+    ├── chat_template.jinja                        # Chat formatting template used for the final model.
+    ├── special_tokens_map.json                    # Special token mapping for the final tokenizer.
+    ├── tokenizer.json                             # Tokenizer vocabulary and processing configuration.
+    ├── tokenizer.model                            # Tokenizer model file.
+    ├── tokenizer_config.json                      # Tokenizer metadata and settings.
+    └── README.md                                  # Auto-generated metadata for the final adapter.
 
 ---
 
