@@ -12,4 +12,8 @@ Screenshots/
 *.tfstate
 *.tfstate.*
 *.pdf
+Cyber-Soc-Chatbot/figures/
+Del/
+*.docx
+*.tmp
 
