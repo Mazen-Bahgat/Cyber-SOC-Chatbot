@@ -1,210 +1,445 @@
----
-base_model: unsloth/tinyllama-chat-bnb-4bit
-library_name: peft
-pipeline_tag: text-generation
-tags:
-- base_model:adapter:unsloth/tinyllama-chat-bnb-4bit
-- lora
-- sft
-- transformers
-- trl
-- unsloth
+# cyber-soc-tinyllama-lora-10k
+
+Fine-tuned TinyLlama LoRA adapter for the **Cyber-SOC Chatbot** project.
+
+This is the **10k-sample adapter variant**, useful for lightweight testing, fast comparisons, and qualitative evaluation against the larger 50k adapter.
+
+This folder contains the trained PEFT/LoRA adapter artifacts and tokenizer files produced by the fine-tuning pipeline. The adapter is intended to be loaded on top of the TinyLlama base model for cybersecurity/SOC-style assistant behavior.
+
 ---
 
-# Model Card for Model ID
+## Folder contents
 
-<!-- Provide a quick summary of what the model is/does. -->
+| File | Purpose |
+|---|---|
+| `adapter_config.json` | PEFT/LoRA adapter configuration, including base model reference and LoRA settings. |
+| `adapter_model.safetensors` | Fine-tuned LoRA adapter weights. |
+| `tokenizer.json` | Fast tokenizer configuration. |
+| `tokenizer.model` | SentencePiece tokenizer model used by TinyLlama-compatible checkpoints. |
+| `tokenizer_config.json` | Tokenizer metadata and runtime configuration. |
+| `special_tokens_map.json` | Mapping for BOS, EOS, unknown, padding, and other special tokens. |
+| `chat_template.jinja` | Chat formatting template used to serialize messages into model prompts. |
+| `README.md` | Documentation for using this adapter folder. |
 
+---
 
+## Model summary
 
-## Model Details
+| Field | Value |
+|---|---|
+| Adapter name | `cyber-soc-tinyllama-lora-10k` |
+| Base model family | TinyLlama |
+| Fine-tuning method | LoRA / PEFT |
+| Training sample size | 10k records |
+| Target domain | Cybersecurity SOC assistant |
+| Weight format | `safetensors` |
+| Expected use | Load adapter with the TinyLlama base model for inference or export/merge into a deployable model |
 
-### Model Description
+---
 
-<!-- Provide a longer summary of what this model is. -->
+## Prerequisites
 
+Use Python 3.10 or newer.
 
+Install the required packages:
 
-- **Developed by:** [More Information Needed]
-- **Funded by [optional]:** [More Information Needed]
-- **Shared by [optional]:** [More Information Needed]
-- **Model type:** [More Information Needed]
-- **Language(s) (NLP):** [More Information Needed]
-- **License:** [More Information Needed]
-- **Finetuned from model [optional]:** [More Information Needed]
+```bash
+pip install --upgrade pip
+pip install torch transformers peft accelerate safetensors sentencepiece
+```
 
-### Model Sources [optional]
+For GPU inference, install a CUDA-compatible PyTorch build from the official PyTorch instructions for your environment.
 
-<!-- Provide the basic links for the model. -->
+---
 
-- **Repository:** [More Information Needed]
-- **Paper [optional]:** [More Information Needed]
-- **Demo [optional]:** [More Information Needed]
+## Quick verification
 
-## Uses
+From the parent directory that contains `cyber-soc-tinyllama-lora-10k/`, run:
 
-<!-- Address questions around how the model is intended to be used, including the foreseeable users of the model and those affected by the model. -->
+```bash
+ls -lh cyber-soc-tinyllama-lora-10k
+```
 
-### Direct Use
+Expected core files:
 
-<!-- This section is for the model use without fine-tuning or plugging into a larger ecosystem/app. -->
+```text
+adapter_config.json
+adapter_model.safetensors
+chat_template.jinja
+special_tokens_map.json
+tokenizer.json
+tokenizer.model
+tokenizer_config.json
+```
 
-[More Information Needed]
+---
 
-### Downstream Use [optional]
+## Load the adapter with Transformers + PEFT
 
-<!-- This section is for the model use when fine-tuned for a task, or when plugged into a larger ecosystem/app -->
+Create a file named `test_adapter.py` outside this folder:
 
-[More Information Needed]
+```python
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
 
-### Out-of-Scope Use
+ADAPTER_DIR = "./cyber-soc-tinyllama-lora-10k"
 
-<!-- This section addresses misuse, malicious use, and uses that the model will not work well for. -->
+tokenizer = AutoTokenizer.from_pretrained(ADAPTER_DIR, trust_remote_code=True)
 
-[More Information Needed]
+base_model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
-## Bias, Risks, and Limitations
+base_model = AutoModelForCausalLM.from_pretrained(
+    base_model_name,
+    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+    device_map="auto",
+    trust_remote_code=True,
+)
 
-<!-- This section is meant to convey both technical and sociotechnical limitations. -->
+model = PeftModel.from_pretrained(base_model, ADAPTER_DIR)
+model.eval()
 
-[More Information Needed]
+messages = [
+    {
+        "role": "system",
+        "content": "You are a cybersecurity SOC assistant. Provide concise, practical guidance."
+    },
+    {
+        "role": "user",
+        "content": "A workstation generated multiple failed login events followed by a successful login from a new country. What should the analyst check first?"
+    }
+]
 
-### Recommendations
+prompt = tokenizer.apply_chat_template(
+    messages,
+    tokenize=False,
+    add_generation_prompt=True,
+)
 
-<!-- This section is meant to convey recommendations with respect to the bias, risk, and technical limitations. -->
+inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
-Users (both direct and downstream) should be made aware of the risks, biases and limitations of the model. More information needed for further recommendations.
+with torch.no_grad():
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=256,
+        temperature=0.2,
+        top_p=0.9,
+        do_sample=True,
+        repetition_penalty=1.1,
+    )
 
-## How to Get Started with the Model
+response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+print(response)
+```
 
-Use the code below to get started with the model.
+Run it:
 
-[More Information Needed]
+```bash
+python test_adapter.py
+```
 
-## Training Details
+---
 
-### Training Data
+## Merge the LoRA adapter into the base model
 
-<!-- This should link to a Dataset Card, perhaps with a short stub of information on what the training data is all about as well as documentation related to data pre-processing or additional filtering. -->
+Use this when you want a standalone merged Hugging Face model directory.
 
-[More Information Needed]
+Create `merge_adapter.py`:
 
-### Training Procedure
+```python
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
 
-<!-- This relates heavily to the Technical Specifications. Content here should link to that section when it is relevant to the training procedure. -->
+ADAPTER_DIR = "./cyber-soc-tinyllama-lora-10k"
+OUTPUT_DIR = "./cyber-soc-tinyllama-lora-10k-merged"
+BASE_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
-#### Preprocessing [optional]
+tokenizer = AutoTokenizer.from_pretrained(ADAPTER_DIR, trust_remote_code=True)
 
-[More Information Needed]
+base_model = AutoModelForCausalLM.from_pretrained(
+    BASE_MODEL,
+    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+    device_map="auto",
+    trust_remote_code=True,
+)
 
+model = PeftModel.from_pretrained(base_model, ADAPTER_DIR)
+merged_model = model.merge_and_unload()
 
-#### Training Hyperparameters
+merged_model.save_pretrained(OUTPUT_DIR, safe_serialization=True)
+tokenizer.save_pretrained(OUTPUT_DIR)
 
-- **Training regime:** [More Information Needed] <!--fp32, fp16 mixed precision, bf16 mixed precision, bf16 non-mixed precision, fp16 non-mixed precision, fp8 mixed precision -->
+print(f"Merged model saved to: {OUTPUT_DIR}")
+```
 
-#### Speeds, Sizes, Times [optional]
+Run:
 
-<!-- This section provides information about throughput, start/end time, checkpoint size if relevant, etc. -->
+```bash
+python merge_adapter.py
+```
 
-[More Information Needed]
+---
 
-## Evaluation
+## Test the merged model
 
-<!-- This section describes the evaluation protocols and provides the results. -->
+Create `test_merged_model.py`:
 
-### Testing Data, Factors & Metrics
+```python
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-#### Testing Data
+MODEL_DIR = "./cyber-soc-tinyllama-lora-10k-merged"
 
-<!-- This should link to a Dataset Card if possible. -->
+tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, trust_remote_code=True)
 
-[More Information Needed]
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_DIR,
+    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+    device_map="auto",
+    trust_remote_code=True,
+)
 
-#### Factors
+messages = [
+    {
+        "role": "system",
+        "content": "You are a cybersecurity SOC assistant."
+    },
+    {
+        "role": "user",
+        "content": "Explain how to triage a phishing alert in a SOC queue."
+    }
+]
 
-<!-- These are the things the evaluation is disaggregating by, e.g., subpopulations or domains. -->
+prompt = tokenizer.apply_chat_template(
+    messages,
+    tokenize=False,
+    add_generation_prompt=True,
+)
 
-[More Information Needed]
+inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
-#### Metrics
+with torch.no_grad():
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=300,
+        temperature=0.2,
+        top_p=0.9,
+        do_sample=True,
+    )
 
-<!-- These are the evaluation metrics being used, ideally with a description of why. -->
+print(tokenizer.decode(outputs[0], skip_special_tokens=True))
+```
 
-[More Information Needed]
+Run:
 
-### Results
+```bash
+python test_merged_model.py
+```
 
-[More Information Needed]
+---
 
-#### Summary
+## Optional: Export to GGUF for Ollama
 
+Ollama normally runs GGUF models. To deploy this fine-tuned model with Ollama, first merge the LoRA adapter into the base model, then convert the merged model to GGUF using `llama.cpp`.
 
+Install `llama.cpp`:
 
-## Model Examination [optional]
+```bash
+git clone https://github.com/ggerganov/llama.cpp.git
+cd llama.cpp
+pip install -r requirements.txt
+```
 
-<!-- Relevant interpretability work for the model goes here -->
+Convert the merged Hugging Face model to GGUF:
 
-[More Information Needed]
+```bash
+python convert_hf_to_gguf.py ../cyber-soc-tinyllama-lora-10k-merged \
+  --outfile ../cyber-soc-tinyllama-lora-10k.gguf \
+  --outtype f16
+```
 
-## Environmental Impact
+Optional quantization:
 
-<!-- Total emissions (in grams of CO2eq) and additional considerations, such as electricity usage, go here. Edit the suggested text below accordingly -->
+```bash
+cmake -B build
+cmake --build build --config Release
 
-Carbon emissions can be estimated using the [Machine Learning Impact calculator](https://mlco2.github.io/impact#compute) presented in [Lacoste et al. (2019)](https://arxiv.org/abs/1910.09700).
+./build/bin/llama-quantize \
+  ../cyber-soc-tinyllama-lora-10k.gguf \
+  ../cyber-soc-tinyllama-lora-10k-q4_k_m.gguf \
+  Q4_K_M
+```
 
-- **Hardware Type:** [More Information Needed]
-- **Hours used:** [More Information Needed]
-- **Cloud Provider:** [More Information Needed]
-- **Compute Region:** [More Information Needed]
-- **Carbon Emitted:** [More Information Needed]
+---
 
-## Technical Specifications [optional]
+## Optional: Run with Ollama
 
-### Model Architecture and Objective
+Create a `Modelfile` next to the GGUF file:
 
-[More Information Needed]
+```text
+FROM ./cyber-soc-tinyllama-lora-10k-q4_k_m.gguf
 
-### Compute Infrastructure
+TEMPLATE """{{ if .System }}<|system|>
+{{ .System }}</s>
+{{ end }}<|user|>
+{{ .Prompt }}</s>
+<|assistant|>
+"""
 
-[More Information Needed]
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER num_ctx 4096
 
-#### Hardware
+SYSTEM """You are a cybersecurity SOC assistant. Provide concise, safe, practical incident triage guidance."""
+```
 
-[More Information Needed]
+Create the Ollama model:
 
-#### Software
+```bash
+ollama create cyber-soc-tinyllama-lora-10k -f Modelfile
+```
 
-[More Information Needed]
+Run it interactively:
 
-## Citation [optional]
+```bash
+ollama run cyber-soc-tinyllama-lora-10k
+```
 
-<!-- If there is a paper or blog post introducing the model, the APA and Bibtex information for that should go in this section. -->
+Test through the local API:
 
-**BibTeX:**
+```bash
+curl http://localhost:11434/api/generate \
+  -d '{
+    "model": "cyber-soc-tinyllama-lora-10k",
+    "prompt": "A user clicked a suspicious link and entered credentials. What should the SOC analyst do first?",
+    "stream": false
+  }'
+```
 
-[More Information Needed]
+---
 
-**APA:**
+## Suggested evaluation prompts
 
-[More Information Needed]
+Use these prompts to compare the base model and fine-tuned adapter.
 
-## Glossary [optional]
+### Prompt 1: Phishing triage
 
-<!-- If relevant, include terms and calculations in this section that can help readers understand the model or model card. -->
+```text
+A user reports a suspicious email with an attachment. The sender domain is one character different from a vendor domain. What should a SOC analyst do?
+```
 
-[More Information Needed]
+### Prompt 2: Brute-force detection
 
-## More Information [optional]
+```text
+Multiple failed SSH logins from one IP are followed by a successful login to a Linux server. What are the first triage steps?
+```
 
-[More Information Needed]
+### Prompt 3: Malware alert
 
-## Model Card Authors [optional]
+```text
+An endpoint alert shows PowerShell spawning from Microsoft Word. What should the analyst investigate?
+```
 
-[More Information Needed]
+### Prompt 4: Data exfiltration
 
-## Model Card Contact
+```text
+A workstation uploaded 3 GB of data to an unknown cloud storage domain after midnight. What evidence should be collected?
+```
 
-[More Information Needed]
-### Framework versions
+---
 
-- PEFT 0.19.1
+## Recommended inference settings
+
+| Parameter | Recommended value |
+|---|---:|
+| `temperature` | `0.1` to `0.3` |
+| `top_p` | `0.8` to `0.95` |
+| `max_new_tokens` | `256` to `512` |
+| `repetition_penalty` | `1.05` to `1.15` |
+| `num_ctx` | `2048` to `4096` |
+
+For SOC triage, lower temperature is recommended because answers should be stable, procedural, and evidence-focused.
+
+---
+
+## Deployment notes
+
+This folder stores the adapter, not necessarily a full standalone model. For deployment, use one of these options:
+
+1. **PEFT runtime loading**  
+   Load TinyLlama from Hugging Face, then attach this LoRA adapter using `PeftModel.from_pretrained`.
+
+2. **Merged Hugging Face model**  
+   Merge the adapter into the base model with `merge_and_unload()` and serve the merged directory.
+
+3. **Ollama GGUF model**  
+   Merge the adapter, convert to GGUF, optionally quantize, then create an Ollama model with a `Modelfile`.
+
+For the course deployment path, the recommended approach is:
+
+```text
+LoRA adapter -> merged Hugging Face model -> GGUF -> Ollama -> OpenWebUI
+```
+
+---
+
+## Known limitations
+
+- The adapter must be used with a compatible TinyLlama base model.
+- The model is intended for cybersecurity guidance and SOC triage assistance, not autonomous incident response.
+- Outputs should be reviewed by a human analyst before operational use.
+- The model may hallucinate commands, indicators, or remediation steps; verify all actions against logs, policies, and approved playbooks.
+- Do not use the model to generate harmful exploit instructions or unauthorized attack guidance.
+
+---
+
+## Reproducibility checklist
+
+Before submitting or deploying, verify that:
+
+- [ ] `adapter_model.safetensors` is present.
+- [ ] `adapter_config.json` points to the correct base model.
+- [ ] Tokenizer files are included.
+- [ ] A local PEFT loading test succeeds.
+- [ ] At least two qualitative evaluation prompts have been tested.
+- [ ] If using Ollama, the model has been converted to GGUF.
+- [ ] The deployed model name is visible in terminal/API screenshots.
+- [ ] A sample API response or browser chat screenshot has been captured.
+
+---
+
+## Example project commands
+
+From the repository root:
+
+```bash
+# Verify adapter files
+ls -lh cyber-soc-tinyllama-lora-10k
+
+# Install dependencies
+pip install torch transformers peft accelerate safetensors sentencepiece
+
+# Test adapter inference
+python test_adapter.py
+
+# Merge adapter into the base model
+python merge_adapter.py
+
+# Test merged model
+python test_merged_model.py
+```
+
+---
+
+## Citation / attribution notes
+
+When documenting this model in the final report, include:
+
+- Base model name and source
+- Base model license
+- Dataset name and license
+- Fine-tuning method: LoRA / PEFT
+- Hardware used for fine-tuning
+- Hyperparameters used during training
+- At least two base-model vs fine-tuned-model response comparisons
