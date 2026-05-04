@@ -203,15 +203,6 @@ terraform output -json > ../terraform-outputs.json
 cd ..
 ```
 
-Recommended evidence for the report:
-
-- VPC ID and CIDR block.
-- Public and private subnet IDs.
-- Route table configuration.
-- Internet Gateway configuration.
-- Security group inbound/outbound rules.
-- Screenshot of the created VPC resources.
-
 ## 6. Run PySpark Preprocessing on AWS EMR
 
 The `spark/` folder contains the preprocessing pipeline. The pipeline should read raw data from S3, clean and normalize records, create train/validation/test splits, compute EDA summaries, and write processed JSONL files back to S3.
@@ -293,13 +284,6 @@ After preprocessing is complete, terminate the EMR cluster if it has not auto-te
 ```bash
 aws emr terminate-clusters --cluster-ids "${EMR_CLUSTER_ID}"
 ```
-
-Recommended evidence for the report:
-
-- EMR cluster configuration screenshot.
-- EMR terminated-state screenshot.
-- S3 screenshot showing processed output files.
-- At least three EDA figures, such as token length distribution, class/label balance, and sample count per split.
 
 ## 7. Fine-Tune TinyLlama with QLoRA/PEFT
 
@@ -385,7 +369,7 @@ aws s3 sync "${LOCAL_OUTPUT_DIR}/tinyllama-cyber-soc-qlora" \
   "s3://${S3_BUCKET}/models/tinyllama-cyber-soc-qlora/"
 ```
 
-Recommended hyperparameters to report:
+Final hyperparameters:
 
 | Hyperparameter | Value |
 |---|---:|
@@ -419,12 +403,6 @@ If the script uses hard-coded paths, update `test_model.py`, then run:
 python test_model.py
 ```
 
-Include at least two comparisons in the report:
-
-| Prompt | Base Model Response | Fine-Tuned Model Response |
-|---|---|---|
-| A workstation executed encoded PowerShell and contacted an unknown IP. What should the SOC analyst do first? | Add output here. | Add output here. |
-| Multiple failed logins occurred from several foreign IP addresses. How should this be triaged? | Add output here. | Add output here. |
 
 ## 9. Export the Fine-Tuned Model to GGUF
 
@@ -548,11 +526,6 @@ curl http://localhost:11434/api/generate -d '{
 }'
 ```
 
-Recommended evidence for the report:
-
-- Terminal screenshot showing Ollama serving `cyber-soc-chatbot`.
-- Screenshot of the `curl` command and model response.
-
 ## 11. Run OpenWebUI
 
 Start OpenWebUI with Docker:
@@ -597,12 +570,6 @@ Then open:
 http://<EC2_PUBLIC_IP>:3000
 ```
 
-Recommended evidence for the report:
-
-- Browser screenshot showing OpenWebUI running.
-- Screenshot showing the selected model name `cyber-soc-chatbot`.
-- Screenshot of a sample SOC conversation.
-
 ## 12. Security Group Reference
 
 | Port | Purpose | Recommended Source |
@@ -635,32 +602,9 @@ Cost controls:
 - Delete unattached EBS volumes.
 - Keep S3, EMR, and EC2 in the same AWS region.
 
-## 14. Final Submission Checklist
+## 14. Teardown Commands
 
-Before submitting, confirm that the repository and report include:
-
-- [ ] System architecture diagram with VPC, subnets, security groups, EMR, EC2, Ollama, and OpenWebUI.
-- [ ] VPC/networking explanation and Terraform files or annotated console screenshots.
-- [ ] Model and dataset selection details, including license, sample count, split strategy, and leakage prevention.
-- [ ] PySpark preprocessing code in `spark/`.
-- [ ] EMR configuration screenshot.
-- [ ] EMR terminated-state screenshot.
-- [ ] S3 screenshot showing processed output files.
-- [ ] At least three EDA figures.
-- [ ] Fine-tuning code in `finetuning/`.
-- [ ] Hyperparameter table.
-- [ ] At least two base-vs-fine-tuned prompt comparisons.
-- [ ] GGUF export evidence.
-- [ ] Exact Ollama deployment commands in both this README and the report.
-- [ ] Terminal screenshot showing Ollama serving the fine-tuned model.
-- [ ] Screenshot of `curl` response from the model API.
-- [ ] OpenWebUI browser screenshot with the model name visible.
-- [ ] Sample conversation screenshot.
-- [ ] Cost summary table.
-
-## 15. Teardown Commands
-
-Run these commands after grading or when resources are no longer needed.
+Run these commands when done or when resources are no longer needed.
 
 Terminate EMR if still running:
 
@@ -755,7 +699,3 @@ Check container logs:
 ```bash
 docker logs --tail 100 open-webui
 ```
-
-## License and Attribution
-
-Document the licenses for the selected base model and dataset in the final report. Also include links to the model and dataset sources used for training.
