@@ -7,8 +7,15 @@ End-to-end cloud-based cybersecurity SOC chatbot for **CISC 886 – Cloud Comput
 ```text
 Cyber-Soc-Chatbot/
 ├── README.md                  # End-to-end replication guide
-├── terraform/                 # AWS VPC, subnets, security groups, and infrastructure IaC
-├── spark/                     # PySpark preprocessing pipeline for EMR
+├── terraform/                                 # Terraform infrastructure-as-code for provisioning AWS resources.
+│   ├── main.tf                                # Defines the custom VPC, subnets, security groups, S3 bucket, IAM roles, and EMR resources.
+│   ├── variables.tf                           # Declares configurable variables such as netID, AWS region, key pair, and allowed IP CIDR.
+│   └── outputs.tf                             # Prints useful AWS resource IDs and names after Terraform deployment.
+│
+├── spark/                                     # Apache Spark preprocessing code used on AWS EMR.
+│   ├── preprocess_witfoo.py                   # PySpark pipeline that converts the raw WitFoo cybersecurity dataset into instruction-tuning JSONL data.
+│   │   └── generate_eda_figures.py                # Generates EDA figures such as label distribution, message length distribution, and split counts.
+│   │
 └── finetuning/                # QLoRA fine-tuning, testing, and GGUF export scripts
     ├── finetune_tinyllama_qlora.py
     ├── finetune_tinyllama_qlora_50K.py
