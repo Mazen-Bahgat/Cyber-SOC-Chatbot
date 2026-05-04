@@ -16,11 +16,11 @@ Cyber-Soc-Chatbot/
 │   ├── preprocess_witfoo.py                   # PySpark pipeline that converts the raw WitFoo cybersecurity dataset into instruction-tuning JSONL data.
 │   └── generate_eda_figures.py                # Generates EDA figures such as label distribution, message length distribution, and split counts.
 │   
-└── finetuning/                             # Fine-tuning, model testing, and GGUF export scripts.
-    ├── finetune_tinyllama_qlora.py         # QLoRA fine-tuning script for the initial 10K training run.
-    ├── finetune_tinyllama_qlora_50K.py     # QLoRA fine-tuning script for the final 50K training run.
-    ├── GGUF_Script.py                      # Exports the fine-tuned LoRA adapter to GGUF format for Ollama deployment.
-    └── test_model.py                       # Tests the fine-tuned model locally using sample cybersecurity prompts.
+└── finetuning/                                # Fine-tuning, model testing, and GGUF export scripts.
+    ├── finetune_tinyllama_qlora.py            # QLoRA fine-tuning script for the initial 10K training run.
+    ├── finetune_tinyllama_qlora_50K.py        # QLoRA fine-tuning script for the final 50K training run.
+    ├── GGUF_Script.py                         # Exports the fine-tuned LoRA adapter to GGUF format for Ollama deployment.
+    └── test_model.py                          # Tests the fine-tuned model locally using sample cybersecurity prompts.
 ```
 
 ## System Overview
