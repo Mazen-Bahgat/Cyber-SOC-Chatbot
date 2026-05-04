@@ -25,7 +25,7 @@ This project builds a complete end-to-end cloud-based cybersecurity SOC (Securit
 
 - A custom **VPC** with public/private subnets, security groups, and routing
 - A **dataset of 20M+ cybersecurity events** preprocessed with **Apache Spark on AWS EMR**
-- **Parameter-efficient fine-tuning** (LoRA/QLoRA) of **TinyLlama-1.1B** using Unsloth on Google Colab
+- **Parameter-efficient fine-tuning** (QLoRA/QLoRA) of **TinyLlama-1.1B** using Unsloth on Google Colab
 - Deployment of the fine-tuned model via **Ollama** on an **EC2 g4dn.xlarge** instance
 - A live **OpenWebUI** chat interface accessible from a browser
 
@@ -82,12 +82,12 @@ Cyber-SOC-Chatbot/
 │   ├── finetuning/                                # Fine-tuning, model testing, and GGUF export scripts.
 │   │   ├── finetune_tinyllama_qlora.py            # QLoRA fine-tuning script for the initial 10K training run.
 │   │   ├── finetune_tinyllama_qlora_50K.py        # QLoRA fine-tuning script for the final 50K training run.
-│   │   ├── GGUF_Script.py                         # Exports the fine-tuned LoRA adapter to GGUF format for Ollama deployment.
+│   │   ├── GGUF_Script.py                         # Exports the fine-tuned QLoRA adapter to GGUF format for Ollama deployment.
 │   │   └── test_model.py                          # Tests the fine-tuned model locally using sample cybersecurity prompts.
 │
-├── cyber-soc-tinyllama-lora-10k/                  # LoRA adapter from the initial 10K-sample fine-tuning validation run.
-│   ├── adapter_config.json                        # Configuration describing the LoRA adapter architecture and settings.
-│   ├── adapter_model.safetensors                  # Fine-tuned LoRA adapter weights from the 10K run.
+├── cyber-soc-tinyllama-QLoRA-10k/                  # QLoRA adapter from the initial 10K-sample fine-tuning validation run.
+│   ├── adapter_config.json                        # Configuration describing the QLoRA adapter architecture and settings.
+│   ├── adapter_model.safetensors                  # Fine-tuned QLoRA adapter weights from the 10K run.
 │   ├── chat_template.jinja                        # Chat template used by the tokenizer during inference.
 │   ├── special_tokens_map.json                    # Mapping of special tokens required by the tokenizer.
 │   ├── tokenizer.json                             # Tokenizer vocabulary and processing configuration.
@@ -95,9 +95,9 @@ Cyber-SOC-Chatbot/
 │   ├── tokenizer_config.json                      # Tokenizer metadata and settings.
 │   └── README.md                                  # Auto-generated adapter metadata file.
 │
-└── cyber-soc-tinyllama-lora-50k/                  # Final LoRA adapter trained on the 50K dataset and used for deployment.
-    ├── adapter_config.json                        # Configuration describing the final LoRA adapter.
-    ├── adapter_model.safetensors                  # Final fine-tuned LoRA adapter weights.
+└── cyber-soc-tinyllama-QLoRA-50k/                  # Final QLoRA adapter trained on the 50K dataset and used for deployment.
+    ├── adapter_config.json                        # Configuration describing the final QLoRA adapter.
+    ├── adapter_model.safetensors                  # Final fine-tuned QLoRA adapter weights.
     ├── chat_template.jinja                        # Chat formatting template used for the final model.
     ├── special_tokens_map.json                    # Special token mapping for the final tokenizer.
     ├── tokenizer.json                             # Tokenizer vocabulary and processing configuration.
@@ -264,9 +264,9 @@ python finetune_tinyllama_qlora_V2.py
 | Parameter | Value |
 |-----------|-------|
 | Base model | TinyLlama/TinyLlama-1.1B-Chat-v1.0 |
-| Method | LoRA (PEFT) |
-| LoRA rank (r) | 16 |
-| LoRA alpha | 16 |
+| Method | QLoRA (PEFT) |
+| QLoRA rank (r) | 16 |
+| QLoRA alpha | 16 |
 | Learning rate | 2e-4 |
 | Batch size | 4 (effective: 16 with grad accum.) |
 | Epochs | 1 |

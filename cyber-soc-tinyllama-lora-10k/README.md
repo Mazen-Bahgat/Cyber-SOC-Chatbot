@@ -1,10 +1,10 @@
-# cyber-soc-tinyllama-lora-10k
+# cyber-soc-tinyllama-QLoRA-10k
 
-Fine-tuned TinyLlama LoRA adapter for the **Cyber-SOC Chatbot** project.
+Fine-tuned TinyLlama QLoRA adapter for the **Cyber-SOC Chatbot** project.
 
 This is the **10k-sample adapter variant**, useful for lightweight testing, fast comparisons, and qualitative evaluation against the larger 50k adapter.
 
-This folder contains the trained PEFT/LoRA adapter artifacts and tokenizer files produced by the fine-tuning pipeline. The adapter is intended to be loaded on top of the TinyLlama base model for cybersecurity/SOC-style assistant behavior.
+This folder contains the trained PEFT/QLoRA adapter artifacts and tokenizer files produced by the fine-tuning pipeline. The adapter is intended to be loaded on top of the TinyLlama base model for cybersecurity/SOC-style assistant behavior.
 
 ---
 
@@ -12,8 +12,8 @@ This folder contains the trained PEFT/LoRA adapter artifacts and tokenizer files
 
 | File | Purpose |
 |---|---|
-| `adapter_config.json` | PEFT/LoRA adapter configuration, including base model reference and LoRA settings. |
-| `adapter_model.safetensors` | Fine-tuned LoRA adapter weights. |
+| `adapter_config.json` | PEFT/QLoRA adapter configuration, including base model reference and QLoRA settings. |
+| `adapter_model.safetensors` | Fine-tuned QLoRA adapter weights. |
 | `tokenizer.json` | Fast tokenizer configuration. |
 | `tokenizer.model` | SentencePiece tokenizer model used by TinyLlama-compatible checkpoints. |
 | `tokenizer_config.json` | Tokenizer metadata and runtime configuration. |
@@ -27,9 +27,9 @@ This folder contains the trained PEFT/LoRA adapter artifacts and tokenizer files
 
 | Field | Value |
 |---|---|
-| Adapter name | `cyber-soc-tinyllama-lora-10k` |
+| Adapter name | `cyber-soc-tinyllama-QLoRA-10k` |
 | Base model family | TinyLlama |
-| Fine-tuning method | LoRA / PEFT |
+| Fine-tuning method | QLoRA / PEFT |
 | Training sample size | 10k records |
 | Target domain | Cybersecurity SOC assistant |
 | Weight format | `safetensors` |
@@ -54,10 +54,10 @@ For GPU inference, install a CUDA-compatible PyTorch build from the official PyT
 
 ## Quick verification
 
-From the parent directory that contains `cyber-soc-tinyllama-lora-10k/`, run:
+From the parent directory that contains `cyber-soc-tinyllama-QLoRA-10k/`, run:
 
 ```bash
-ls -lh cyber-soc-tinyllama-lora-10k
+ls -lh cyber-soc-tinyllama-QLoRA-10k
 ```
 
 Expected core files:
@@ -83,7 +83,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
-ADAPTER_DIR = "./cyber-soc-tinyllama-lora-10k"
+ADAPTER_DIR = "./cyber-soc-tinyllama-QLoRA-10k"
 
 tokenizer = AutoTokenizer.from_pretrained(ADAPTER_DIR, trust_remote_code=True)
 
@@ -140,7 +140,7 @@ python test_adapter.py
 
 ---
 
-## Merge the LoRA adapter into the base model
+## Merge the QLoRA adapter into the base model
 
 Use this when you want a standalone merged Hugging Face model directory.
 
@@ -151,8 +151,8 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
-ADAPTER_DIR = "./cyber-soc-tinyllama-lora-10k"
-OUTPUT_DIR = "./cyber-soc-tinyllama-lora-10k-merged"
+ADAPTER_DIR = "./cyber-soc-tinyllama-QLoRA-10k"
+OUTPUT_DIR = "./cyber-soc-tinyllama-QLoRA-10k-merged"
 BASE_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
 tokenizer = AutoTokenizer.from_pretrained(ADAPTER_DIR, trust_remote_code=True)
@@ -189,7 +189,7 @@ Create `test_merged_model.py`:
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-MODEL_DIR = "./cyber-soc-tinyllama-lora-10k-merged"
+MODEL_DIR = "./cyber-soc-tinyllama-QLoRA-10k-merged"
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, trust_remote_code=True)
 
@@ -241,7 +241,7 @@ python test_merged_model.py
 
 ## Optional: Export to GGUF for Ollama
 
-Ollama normally runs GGUF models. To deploy this fine-tuned model with Ollama, first merge the LoRA adapter into the base model, then convert the merged model to GGUF using `llama.cpp`.
+Ollama normally runs GGUF models. To deploy this fine-tuned model with Ollama, first merge the QLoRA adapter into the base model, then convert the merged model to GGUF using `llama.cpp`.
 
 Install `llama.cpp`:
 
@@ -254,8 +254,8 @@ pip install -r requirements.txt
 Convert the merged Hugging Face model to GGUF:
 
 ```bash
-python convert_hf_to_gguf.py ../cyber-soc-tinyllama-lora-10k-merged \
-  --outfile ../cyber-soc-tinyllama-lora-10k.gguf \
+python convert_hf_to_gguf.py ../cyber-soc-tinyllama-QLoRA-10k-merged \
+  --outfile ../cyber-soc-tinyllama-QLoRA-10k.gguf \
   --outtype f16
 ```
 
@@ -266,8 +266,8 @@ cmake -B build
 cmake --build build --config Release
 
 ./build/bin/llama-quantize \
-  ../cyber-soc-tinyllama-lora-10k.gguf \
-  ../cyber-soc-tinyllama-lora-10k-q4_k_m.gguf \
+  ../cyber-soc-tinyllama-QLoRA-10k.gguf \
+  ../cyber-soc-tinyllama-QLoRA-10k-q4_k_m.gguf \
   Q4_K_M
 ```
 
@@ -278,7 +278,7 @@ cmake --build build --config Release
 Create a `Modelfile` next to the GGUF file:
 
 ```text
-FROM ./cyber-soc-tinyllama-lora-10k-q4_k_m.gguf
+FROM ./cyber-soc-tinyllama-QLoRA-10k-q4_k_m.gguf
 
 TEMPLATE """{{ if .System }}<|system|>
 {{ .System }}</s>
@@ -297,13 +297,13 @@ SYSTEM """You are a cybersecurity SOC assistant. Provide concise, safe, practica
 Create the Ollama model:
 
 ```bash
-ollama create cyber-soc-tinyllama-lora-10k -f Modelfile
+ollama create cyber-soc-tinyllama-QLoRA-10k -f Modelfile
 ```
 
 Run it interactively:
 
 ```bash
-ollama run cyber-soc-tinyllama-lora-10k
+ollama run cyber-soc-tinyllama-QLoRA-10k
 ```
 
 Test through the local API:
@@ -311,7 +311,7 @@ Test through the local API:
 ```bash
 curl http://localhost:11434/api/generate \
   -d '{
-    "model": "cyber-soc-tinyllama-lora-10k",
+    "model": "cyber-soc-tinyllama-QLoRA-10k",
     "prompt": "A user clicked a suspicious link and entered credentials. What should the SOC analyst do first?",
     "stream": false
   }'
@@ -368,7 +368,7 @@ For SOC triage, lower temperature is recommended because answers should be stabl
 This folder stores the adapter, not necessarily a full standalone model. For deployment, use one of these options:
 
 1. **PEFT runtime loading**  
-   Load TinyLlama from Hugging Face, then attach this LoRA adapter using `PeftModel.from_pretrained`.
+   Load TinyLlama from Hugging Face, then attach this QLoRA adapter using `PeftModel.from_pretrained`.
 
 2. **Merged Hugging Face model**  
    Merge the adapter into the base model with `merge_and_unload()` and serve the merged directory.
@@ -379,7 +379,7 @@ This folder stores the adapter, not necessarily a full standalone model. For dep
 For the course deployment path, the recommended approach is:
 
 ```text
-LoRA adapter -> merged Hugging Face model -> GGUF -> Ollama -> OpenWebUI
+QLoRA adapter -> merged Hugging Face model -> GGUF -> Ollama -> OpenWebUI
 ```
 
 ---
@@ -415,7 +415,7 @@ From the repository root:
 
 ```bash
 # Verify adapter files
-ls -lh cyber-soc-tinyllama-lora-10k
+ls -lh cyber-soc-tinyllama-QLoRA-10k
 
 # Install dependencies
 pip install torch transformers peft accelerate safetensors sentencepiece
@@ -439,7 +439,7 @@ When documenting this model in the final report, include:
 - Base model name and source
 - Base model license
 - Dataset name and license
-- Fine-tuning method: LoRA / PEFT
+- Fine-tuning method: QLoRA / PEFT
 - Hardware used for fine-tuning
 - Hyperparameters used during training
 - At least two base-model vs fine-tuned-model response comparisons
