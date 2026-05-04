@@ -16,4 +16,8 @@ Cyber-Soc-Chatbot/figures/
 Del/
 *.docx
 *.tmp
+models/
+Cyber-Soc-Chatbot/finetuning/unsloth_compiled_cache
+
+
 
