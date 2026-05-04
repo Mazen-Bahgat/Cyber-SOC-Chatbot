@@ -1,106 +1,309 @@
-# Fine-Tuning Pipeline — TinyLlama QLoRA and GGUF Export
+# Cyber-SOC-Chatbot
 
-This folder contains the fine-tuning and model-conversion scripts for the **Cyber-SOC Chatbot** project. The goal is to fine-tune a lightweight open-source LLM using QLoRA/PEFT, evaluate the tuned model against the base model, and export the final model to GGUF so it can be served with Ollama and connected to OpenWebUI.
+End-to-end cloud-based cybersecurity SOC chatbot for **CISC 886 – Cloud Computing**. This repository provisions AWS networking infrastructure, preprocesses a cybersecurity dataset with Apache Spark on AWS EMR, fine-tunes a lightweight LLM with QLoRA/PEFT, exports the tuned model to GGUF, serves it with Ollama on EC2, and exposes it through OpenWebUI.
 
-## Folder Contents
+## Repository Structure
 
-| File | Purpose |
-|---|---|
-| `finetune_tinyllama_qlora.py` | Full QLoRA fine-tuning script for TinyLlama on the preprocessed cybersecurity/SOC dataset. |
-| `finetune_tinyllama_qlora_50K.py` | Smaller 50K-sample fine-tuning run for faster experimentation and debugging. |
-| `GGUF_Script.py` | Exports or converts the fine-tuned model/adapters into GGUF format for Ollama deployment. |
-| `test_model.py` | Runs prompt-based testing against the base and/or fine-tuned model. |
+```text
+Cyber-Soc-Chatbot/
+├── README.md                  # End-to-end replication guide
+├── terraform/                 # AWS VPC, subnets, security groups, and infrastructure IaC
+├── spark/                     # PySpark preprocessing pipeline for EMR
+└── finetuning/                # QLoRA fine-tuning, testing, and GGUF export scripts
+    ├── finetune_tinyllama_qlora.py
+    ├── finetune_tinyllama_qlora_50K.py
+    ├── GGUF_Script.py
+    └── test_model.py
+```
 
-## Project Context
+## System Overview
 
-This fine-tuning stage is part of the end-to-end cloud chatbot pipeline:
+The project pipeline is:
 
-1. Dataset is uploaded to Amazon S3.
-2. Data is cleaned and split using PySpark on AWS EMR.
-3. TinyLlama is fine-tuned using QLoRA/PEFT.
-4. The fine-tuned model is exported to GGUF.
-5. The GGUF model is served on EC2 using Ollama.
-6. OpenWebUI provides the browser-based chatbot interface.
+```text
+Raw cybersecurity dataset
+        |
+        v
+Amazon S3 raw-data prefix
+        |
+        v
+AWS EMR + PySpark preprocessing
+        |
+        v
+Amazon S3 processed train/validation/test JSONL files
+        |
+        v
+TinyLlama QLoRA/PEFT fine-tuning
+        |
+        v
+Fine-tuned adapter + merged model artifacts
+        |
+        v
+GGUF export
+        |
+        v
+EC2 + Ollama model serving
+        |
+        v
+OpenWebUI browser chat interface
+```
 
 ## Prerequisites
 
-### Accounts and Services
+### Required accounts and access
 
-- AWS account access for S3, EMR, and EC2.
-- Hugging Face account and token if the selected base model or dataset requires authentication.
-- Optional: Google Colab with GPU runtime for fine-tuning.
+- AWS account access with permissions for VPC, EC2, EMR, S3, IAM, CloudWatch, and security groups.
+- Hugging Face account and token if the selected model or dataset requires authentication.
+- Queen's NetID for AWS resource naming.
 
-### Local or Cloud Machine
+### Required local tools
 
-Recommended training environment:
+Install these on your local machine or development VM:
 
+- Git
+- AWS CLI v2
+- Terraform 1.5+
 - Python 3.10+
-- NVIDIA GPU with approximately 16 GB VRAM, such as Google Colab T4 or AWS `g4dn.xlarge`
-- CUDA-compatible PyTorch installation
-- At least 40 GB free disk space for model checkpoints and GGUF export
+- Docker
+- SSH client
 
-Recommended deployment environment:
+Optional but recommended:
 
-- AWS EC2 GPU or CPU instance, depending on GGUF quantization level
-- Ubuntu 22.04 LTS or similar Linux AMI
-- Ollama
-- Docker, if using OpenWebUI
+- Google Colab with GPU runtime for low-cost QLoRA fine-tuning.
+- `jq` for reading AWS CLI JSON output.
 
-## Required AWS Naming Convention
+## Required Environment Variables
 
-All AWS resources should be prefixed with your Queen's NetID.
-
-Example:
+Set these values before running the commands below. Replace `q1abc` with your Queen's NetID.
 
 ```bash
 export NETID="q1abc"
 export AWS_REGION="us-east-1"
-export S3_BUCKET="${NETID}-cyber-soc-chatbot"
+export PROJECT_NAME="cyber-soc-chatbot"
+export S3_BUCKET="${NETID}-${PROJECT_NAME}"
+export KEY_NAME="${NETID}-${PROJECT_NAME}-key"
+export BASE_MODEL="TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+export LOCAL_DATA_DIR="./data"
+export LOCAL_OUTPUT_DIR="./outputs"
 ```
 
-Use your actual NetID before running any AWS commands.
+All AWS resources created for this project should start with `${NETID}-`.
 
-## Expected Input Data
+## 1. Clone the Repository
 
-The fine-tuning scripts expect preprocessed JSONL files produced by the EMR/Spark preprocessing stage.
+```bash
+git clone https://github.com/<your-github-username>/Cyber-Soc-Chatbot.git
+cd Cyber-Soc-Chatbot
+```
 
-Recommended S3 structure:
+Check the top-level structure:
+
+```bash
+ls -la
+ls -la terraform spark finetuning
+```
+
+## 2. Configure AWS CLI
+
+```bash
+aws configure
+aws sts get-caller-identity
+aws configure set region "${AWS_REGION}"
+```
+
+Confirm the active region:
+
+```bash
+aws configure get region
+```
+
+## 3. Create the S3 Bucket
+
+Create the project bucket:
+
+```bash
+aws s3 mb "s3://${S3_BUCKET}" --region "${AWS_REGION}"
+```
+
+Create the expected folder layout:
+
+```bash
+aws s3api put-object --bucket "${S3_BUCKET}" --key raw/
+aws s3api put-object --bucket "${S3_BUCKET}" --key processed/
+aws s3api put-object --bucket "${S3_BUCKET}" --key models/
+aws s3api put-object --bucket "${S3_BUCKET}" --key logs/
+```
+
+Expected S3 layout:
+
+```text
+s3://${S3_BUCKET}/
+├── raw/
+├── processed/
+├── models/
+└── logs/
+```
+
+## 4. Upload the Raw Dataset to S3
+
+Place the raw cybersecurity/SOC dataset locally under `data/raw/`, then upload it:
+
+```bash
+mkdir -p data/raw
+aws s3 sync data/raw "s3://${S3_BUCKET}/raw/"
+```
+
+Verify the upload:
+
+```bash
+aws s3 ls "s3://${S3_BUCKET}/raw/" --recursive --human-readable --summarize
+```
+
+## 5. Provision AWS Networking with Terraform
+
+The project requires a non-default VPC. The `terraform/` folder should create the VPC, public/private subnets, route tables, internet gateway, security groups, and supporting infrastructure.
+
+```bash
+cd terraform
+terraform init
+terraform fmt
+terraform validate
+```
+
+Preview the infrastructure plan:
+
+```bash
+terraform plan \
+  -var="netid=${NETID}" \
+  -var="aws_region=${AWS_REGION}" \
+  -var="project_name=${PROJECT_NAME}"
+```
+
+Apply the infrastructure:
+
+```bash
+terraform apply \
+  -var="netid=${NETID}" \
+  -var="aws_region=${AWS_REGION}" \
+  -var="project_name=${PROJECT_NAME}"
+```
+
+Save Terraform outputs for later steps:
+
+```bash
+terraform output
+terraform output -json > ../terraform-outputs.json
+cd ..
+```
+
+Recommended evidence for the report:
+
+- VPC ID and CIDR block.
+- Public and private subnet IDs.
+- Route table configuration.
+- Internet Gateway configuration.
+- Security group inbound/outbound rules.
+- Screenshot of the created VPC resources.
+
+## 6. Run PySpark Preprocessing on AWS EMR
+
+The `spark/` folder contains the preprocessing pipeline. The pipeline should read raw data from S3, clean and normalize records, create train/validation/test splits, compute EDA summaries, and write processed JSONL files back to S3.
+
+### 6.1 Upload Spark code to S3
+
+```bash
+aws s3 sync spark "s3://${S3_BUCKET}/code/spark/"
+```
+
+### 6.2 Create an EMR cluster
+
+Use a small temporary cluster for preprocessing. Replace subnet and security group values with the outputs from Terraform.
+
+```bash
+export EMR_RELEASE="emr-6.15.0"
+export EMR_CLUSTER_NAME="${NETID}-${PROJECT_NAME}-emr"
+export EMR_LOG_URI="s3://${S3_BUCKET}/logs/emr/"
+export EC2_SUBNET_ID="$(jq -r '.public_subnet_id.value // .public_subnet_ids.value[0]' terraform-outputs.json)"
+```
+
+Create the cluster:
+
+```bash
+aws emr create-cluster \
+  --name "${EMR_CLUSTER_NAME}" \
+  --release-label "${EMR_RELEASE}" \
+  --applications Name=Spark \
+  --region "${AWS_REGION}" \
+  --log-uri "${EMR_LOG_URI}" \
+  --use-default-roles \
+  --ec2-attributes KeyName="${KEY_NAME}",SubnetId="${EC2_SUBNET_ID}" \
+  --instance-type m5.xlarge \
+  --instance-count 3 \
+  --auto-termination-policy IdleTimeout=1800
+```
+
+Store the cluster ID returned by the command:
+
+```bash
+export EMR_CLUSTER_ID="j-XXXXXXXXXXXXX"
+```
+
+### 6.3 Submit the Spark preprocessing job
+
+If your Spark script has a different name, replace `preprocess.py` with the script in the `spark/` folder.
+
+```bash
+aws emr add-steps \
+  --cluster-id "${EMR_CLUSTER_ID}" \
+  --steps Type=Spark,Name="${NETID}-spark-preprocess",ActionOnFailure=TERMINATE_CLUSTER,Args=[--deploy-mode,cluster,s3://${S3_BUCKET}/code/spark/preprocess.py,--input,s3://${S3_BUCKET}/raw/,--output,s3://${S3_BUCKET}/processed/]
+```
+
+Monitor the cluster:
+
+```bash
+aws emr describe-cluster --cluster-id "${EMR_CLUSTER_ID}" \
+  --query 'Cluster.Status' \
+  --output json
+```
+
+Verify processed outputs:
+
+```bash
+aws s3 ls "s3://${S3_BUCKET}/processed/" --recursive --human-readable --summarize
+```
+
+Expected processed outputs:
 
 ```text
 s3://${S3_BUCKET}/processed/train.jsonl
 s3://${S3_BUCKET}/processed/validation.jsonl
 s3://${S3_BUCKET}/processed/test.jsonl
+s3://${S3_BUCKET}/processed/eda/
 ```
 
-Recommended JSONL format:
+After preprocessing is complete, terminate the EMR cluster if it has not auto-terminated:
 
-```json
-{"instruction":"Analyze the following SOC alert.","input":"Suspicious PowerShell execution from endpoint host-22.","output":"This may indicate malicious script execution. Review parent process, command-line arguments, user context, and network indicators."}
+```bash
+aws emr terminate-clusters --cluster-ids "${EMR_CLUSTER_ID}"
 ```
 
-If your scripts use `prompt` and `response` instead of `instruction`, `input`, and `output`, keep the schema consistent across train, validation, and test files.
+Recommended evidence for the report:
 
-## Environment Setup
+- EMR cluster configuration screenshot.
+- EMR terminated-state screenshot.
+- S3 screenshot showing processed output files.
+- At least three EDA figures, such as token length distribution, class/label balance, and sample count per split.
 
-Create and activate a Python virtual environment:
+## 7. Fine-Tune TinyLlama with QLoRA/PEFT
+
+The fine-tuning scripts are in `finetuning/`.
 
 ```bash
 cd finetuning
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-```
-
-Install required packages:
-
-```bash
-pip install torch transformers datasets accelerate peft trl bitsandbytes sentencepiece protobuf huggingface_hub
-```
-
-Optional packages for logging and evaluation:
-
-```bash
-pip install pandas numpy matplotlib scikit-learn evaluate tensorboard
+pip install torch transformers datasets accelerate peft trl bitsandbytes sentencepiece protobuf huggingface_hub pandas numpy matplotlib scikit-learn evaluate tensorboard
 ```
 
 Log in to Hugging Face if needed:
@@ -109,55 +312,23 @@ Log in to Hugging Face if needed:
 huggingface-cli login
 ```
 
-Configure AWS CLI:
+Download the processed splits from S3:
 
 ```bash
-aws configure
-aws sts get-caller-identity
-```
-
-## Download Preprocessed Dataset from S3
-
-Set project variables:
-
-```bash
-export NETID="q1abc"
-export AWS_REGION="us-east-1"
-export S3_BUCKET="${NETID}-cyber-soc-chatbot"
-export LOCAL_DATA_DIR="./data"
-export LOCAL_OUTPUT_DIR="./outputs"
-
 mkdir -p "${LOCAL_DATA_DIR}" "${LOCAL_OUTPUT_DIR}"
-```
-
-Download the processed splits:
-
-```bash
 aws s3 cp "s3://${S3_BUCKET}/processed/train.jsonl" "${LOCAL_DATA_DIR}/train.jsonl"
 aws s3 cp "s3://${S3_BUCKET}/processed/validation.jsonl" "${LOCAL_DATA_DIR}/validation.jsonl"
 aws s3 cp "s3://${S3_BUCKET}/processed/test.jsonl" "${LOCAL_DATA_DIR}/test.jsonl"
 ```
 
-Verify files exist:
+Verify the files:
 
 ```bash
 ls -lh "${LOCAL_DATA_DIR}"
 head -n 2 "${LOCAL_DATA_DIR}/train.jsonl"
 ```
 
-## Base Model
-
-Default base model:
-
-```bash
-export BASE_MODEL="TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-```
-
-TinyLlama is suitable for this project because it is small enough for low-cost experimentation while still supporting instruction-style fine-tuning.
-
-## Run a Fast 50K-Sample Fine-Tuning Experiment
-
-Use the 50K script first to confirm that the dataset, tokenizer, GPU, and output paths work correctly.
+### 7.1 Run a 50K-sample test fine-tuning job
 
 ```bash
 python finetune_tinyllama_qlora_50K.py \
@@ -176,15 +347,13 @@ python finetune_tinyllama_qlora_50K.py \
   --max_seq_length 2048
 ```
 
-If the script does not accept command-line arguments, edit the configuration block at the top of `finetune_tinyllama_qlora_50K.py` with the same values above, then run:
+If the script does not accept command-line arguments, edit the configuration variables at the top of `finetune_tinyllama_qlora_50K.py`, then run:
 
 ```bash
 python finetune_tinyllama_qlora_50K.py
 ```
 
-## Run the Full Fine-Tuning Job
-
-After the 50K run completes successfully, run the full fine-tuning script:
+### 7.2 Run the full fine-tuning job
 
 ```bash
 python finetune_tinyllama_qlora.py \
@@ -202,53 +371,32 @@ python finetune_tinyllama_qlora.py \
   --max_seq_length 2048
 ```
 
-If the script uses hard-coded settings, update the script configuration and run:
-
-```bash
-python finetune_tinyllama_qlora.py
-```
-
-## Recommended Hyperparameters to Report
-
-| Hyperparameter | Recommended Value | Notes |
-|---|---:|---|
-| Base model | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | Small open-source chat model. |
-| Fine-tuning method | QLoRA / PEFT | Updates adapter weights instead of full model weights. |
-| Quantization | 4-bit | Reduces VRAM usage. |
-| Epochs | `1` for test run, `3` for full run | Adjust based on validation loss. |
-| Learning rate | `2e-4` | Common LoRA starting point. |
-| Batch size | `2` | Increase only if GPU memory allows. |
-| Gradient accumulation | `8` | Effective batch size = batch size × accumulation. |
-| LoRA rank `r` | `16` | Adapter capacity. |
-| LoRA alpha | `32` | LoRA scaling factor. |
-| LoRA dropout | `0.05` | Helps reduce overfitting. |
-| Max sequence length | `2048` | Adjust based on dataset token lengths. |
-
-## Expected Training Outputs
-
-After training, the output directory should contain files similar to:
-
-```text
-outputs/tinyllama-cyber-soc-qlora/
-├── adapter_config.json
-├── adapter_model.safetensors
-├── tokenizer.json
-├── tokenizer_config.json
-├── special_tokens_map.json
-├── training_args.bin
-└── checkpoint-*/
-```
-
-Upload training artifacts to S3:
+Upload the final model artifacts to S3:
 
 ```bash
 aws s3 sync "${LOCAL_OUTPUT_DIR}/tinyllama-cyber-soc-qlora" \
-  "s3://${S3_BUCKET}/models/tinyllama-cyber-soc-qlora"
+  "s3://${S3_BUCKET}/models/tinyllama-cyber-soc-qlora/"
 ```
 
-## Test the Fine-Tuned Model
+Recommended hyperparameters to report:
 
-Run model testing on cybersecurity/SOC prompts:
+| Hyperparameter | Value |
+|---|---:|
+| Base model | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` |
+| Fine-tuning method | QLoRA / PEFT |
+| Quantization | 4-bit |
+| Epochs | 3 |
+| Learning rate | `2e-4` |
+| Per-device batch size | 2 |
+| Gradient accumulation | 8 |
+| LoRA rank | 16 |
+| LoRA alpha | 32 |
+| LoRA dropout | 0.05 |
+| Max sequence length | 2048 |
+
+## 8. Test the Base Model vs. Fine-Tuned Model
+
+Run prompt-based testing:
 
 ```bash
 python test_model.py \
@@ -258,22 +406,22 @@ python test_model.py \
   --num_examples 10
 ```
 
-If command-line arguments are not supported, edit `test_model.py` with the same paths and run:
+If the script uses hard-coded paths, update `test_model.py`, then run:
 
 ```bash
 python test_model.py
 ```
 
-Recommended report evidence:
+Include at least two comparisons in the report:
 
 | Prompt | Base Model Response | Fine-Tuned Model Response |
 |---|---|---|
-| Investigate a suspicious PowerShell command from a workstation. | Add base response here. | Add fine-tuned response here. |
-| Classify a failed-login spike from multiple IP addresses. | Add base response here. | Add fine-tuned response here. |
+| A workstation executed encoded PowerShell and contacted an unknown IP. What should the SOC analyst do first? | Add output here. | Add output here. |
+| Multiple failed logins occurred from several foreign IP addresses. How should this be triaged? | Add output here. | Add output here. |
 
-## Export to GGUF
+## 9. Export the Fine-Tuned Model to GGUF
 
-Run the GGUF export/conversion script:
+Run the GGUF export script:
 
 ```bash
 python GGUF_Script.py \
@@ -284,7 +432,7 @@ python GGUF_Script.py \
   --quantization "Q4_K_M"
 ```
 
-If the script does not accept command-line arguments, update the paths in `GGUF_Script.py` and run:
+If the script does not accept command-line arguments, update the paths in `GGUF_Script.py`, then run:
 
 ```bash
 python GGUF_Script.py
@@ -296,14 +444,45 @@ Verify the GGUF file:
 ls -lh "${LOCAL_OUTPUT_DIR}"/*.gguf
 ```
 
-Upload GGUF to S3:
+Upload the GGUF model to S3:
 
 ```bash
 aws s3 cp "${LOCAL_OUTPUT_DIR}/tinyllama-cyber-soc.Q4_K_M.gguf" \
   "s3://${S3_BUCKET}/models/gguf/tinyllama-cyber-soc.Q4_K_M.gguf"
 ```
 
-## Serve the GGUF Model with Ollama on EC2
+Return to the repository root:
+
+```bash
+cd ..
+```
+
+## 10. Deploy the Model on EC2 with Ollama
+
+Launch an EC2 instance in the project VPC. Recommended deployment setup:
+
+- AMI: Ubuntu 22.04 LTS
+- Instance type: `g4dn.xlarge` for GPU-backed testing, or a CPU instance for small quantized GGUF testing
+- Storage: at least 60 GB EBS
+- Security group inbound rules:
+  - TCP 22 from your IP only
+  - TCP 3000 from your IP only for OpenWebUI
+  - TCP 11434 should remain local/VPC-only unless explicitly required
+
+SSH into the EC2 instance:
+
+```bash
+ssh -i /path/to/${KEY_NAME}.pem ubuntu@<EC2_PUBLIC_IP>
+```
+
+Install system packages:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y curl git unzip python3-pip docker.io awscli
+sudo systemctl enable --now docker
+sudo usermod -aG docker ubuntu
+```
 
 Install Ollama:
 
@@ -315,18 +494,22 @@ ollama --version
 Download the GGUF model from S3:
 
 ```bash
+export NETID="q1abc"
+export PROJECT_NAME="cyber-soc-chatbot"
+export S3_BUCKET="${NETID}-${PROJECT_NAME}"
+
 mkdir -p ~/models/cyber-soc
 aws s3 cp "s3://${S3_BUCKET}/models/gguf/tinyllama-cyber-soc.Q4_K_M.gguf" \
   ~/models/cyber-soc/tinyllama-cyber-soc.Q4_K_M.gguf
 ```
 
-Create an Ollama `Modelfile`:
+Create the Ollama `Modelfile`:
 
 ```bash
 cat > ~/models/cyber-soc/Modelfile <<'MODELFILE'
 FROM ./tinyllama-cyber-soc.Q4_K_M.gguf
 
-SYSTEM "You are a cybersecurity SOC assistant. Provide concise, accurate triage guidance, identify likely threats, and recommend investigation steps. Do not invent evidence."
+SYSTEM "You are a cybersecurity SOC assistant. Provide concise, accurate alert triage guidance. Identify likely threats, recommend investigation steps, and avoid inventing evidence."
 
 PARAMETER temperature 0.2
 PARAMETER top_p 0.9
@@ -334,16 +517,21 @@ PARAMETER num_ctx 2048
 MODELFILE
 ```
 
-Create and run the model:
+Create the Ollama model:
 
 ```bash
 cd ~/models/cyber-soc
 ollama create cyber-soc-chatbot -f Modelfile
 ollama list
+```
+
+Run the model interactively:
+
+```bash
 ollama run cyber-soc-chatbot
 ```
 
-Test the Ollama API:
+Test the Ollama API with `curl`:
 
 ```bash
 curl http://localhost:11434/api/generate -d '{
@@ -353,21 +541,14 @@ curl http://localhost:11434/api/generate -d '{
 }'
 ```
 
-## Run OpenWebUI
+Recommended evidence for the report:
 
-Install and start OpenWebUI with Docker:
+- Terminal screenshot showing Ollama serving `cyber-soc-chatbot`.
+- Screenshot of the `curl` command and model response.
 
-```bash
-docker run -d \
-  --name open-webui \
-  --restart always \
-  -p 3000:8080 \
-  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
-  -v open-webui:/app/backend/data \
-  ghcr.io/open-webui/open-webui:main
-```
+## 11. Run OpenWebUI
 
-On Linux EC2, if `host.docker.internal` does not resolve, use:
+Start OpenWebUI with Docker:
 
 ```bash
 docker run -d \
@@ -379,109 +560,195 @@ docker run -d \
   ghcr.io/open-webui/open-webui:main
 ```
 
-Open the interface in a browser:
+Check the container:
+
+```bash
+docker ps
+```
+
+Open the web interface:
+
+```text
+http://<EC2_PUBLIC_IP>:8080
+```
+
+If using port mapping instead of host networking, run:
+
+```bash
+docker run -d \
+  --name open-webui \
+  --restart always \
+  -p 3000:8080 \
+  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  -v open-webui:/app/backend/data \
+  ghcr.io/open-webui/open-webui:main
+```
+
+Then open:
 
 ```text
 http://<EC2_PUBLIC_IP>:3000
 ```
 
-Select the model named:
+Recommended evidence for the report:
 
-```text
-cyber-soc-chatbot
+- Browser screenshot showing OpenWebUI running.
+- Screenshot showing the selected model name `cyber-soc-chatbot`.
+- Screenshot of a sample SOC conversation.
+
+## 12. Security Group Reference
+
+| Port | Purpose | Recommended Source |
+|---:|---|---|
+| 22 | SSH administration | Your IP only |
+| 3000 or 8080 | OpenWebUI browser access | Your IP only |
+| 11434 | Ollama API | Localhost or VPC-only |
+| 80 / 443 | Optional reverse proxy | Public only if TLS and reverse proxy are configured |
+
+Do not expose Ollama directly to the public internet unless a secure proxy and authentication layer are configured.
+
+## 13. Cost Summary
+
+Update this table with actual values from AWS Billing or Cost Explorer before final submission.
+
+| Service | Purpose | Estimated Usage | Estimated Cost |
+|---|---|---:|---:|
+| S3 | Raw dataset, processed dataset, model artifacts, logs | Dataset + checkpoints for project duration | `$1–$5` |
+| EMR | Spark preprocessing cluster | One short preprocessing run, terminated afterward | `$2–$10` |
+| EC2 | Model deployment/testing instance | Temporary Ollama/OpenWebUI serving | `$3–$20` |
+| EBS | EC2 storage volume for model files | 60 GB temporary volume | `$1–$5` |
+| Data transfer | S3/EC2 artifact movement | Same-region transfer where possible | `$0–$2` |
+| Total | Approximate project spend | Depends on runtime and teardown timing | `$7–$42` |
+
+Cost controls:
+
+- Terminate the EMR cluster after preprocessing.
+- Stop or terminate EC2 when not testing.
+- Delete unused checkpoints and old intermediate files.
+- Delete unattached EBS volumes.
+- Keep S3, EMR, and EC2 in the same AWS region.
+
+## 14. Final Submission Checklist
+
+Before submitting, confirm that the repository and report include:
+
+- [ ] System architecture diagram with VPC, subnets, security groups, EMR, EC2, Ollama, and OpenWebUI.
+- [ ] VPC/networking explanation and Terraform files or annotated console screenshots.
+- [ ] Model and dataset selection details, including license, sample count, split strategy, and leakage prevention.
+- [ ] PySpark preprocessing code in `spark/`.
+- [ ] EMR configuration screenshot.
+- [ ] EMR terminated-state screenshot.
+- [ ] S3 screenshot showing processed output files.
+- [ ] At least three EDA figures.
+- [ ] Fine-tuning code in `finetuning/`.
+- [ ] Hyperparameter table.
+- [ ] At least two base-vs-fine-tuned prompt comparisons.
+- [ ] GGUF export evidence.
+- [ ] Exact Ollama deployment commands in both this README and the report.
+- [ ] Terminal screenshot showing Ollama serving the fine-tuned model.
+- [ ] Screenshot of `curl` response from the model API.
+- [ ] OpenWebUI browser screenshot with the model name visible.
+- [ ] Sample conversation screenshot.
+- [ ] Cost summary table.
+
+## 15. Teardown Commands
+
+Run these commands after grading or when resources are no longer needed.
+
+Terminate EMR if still running:
+
+```bash
+aws emr list-clusters --active
+aws emr terminate-clusters --cluster-ids "${EMR_CLUSTER_ID}"
 ```
 
-## Security Group Ports for Deployment
+Stop or terminate EC2 instances from the AWS console or CLI:
 
-| Port | Purpose | Source Recommendation |
-|---:|---|---|
-| `22` | SSH | Your IP only. |
-| `11434` | Ollama API | Keep private unless required. Prefer localhost or VPC-only access. |
-| `3000` | OpenWebUI | Your IP only for grading/demo access. |
-| `80` / `443` | Optional web access | Use only if reverse proxy and TLS are configured. |
+```bash
+aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=${NETID}-${PROJECT_NAME}*" \
+  --query 'Reservations[].Instances[].{InstanceId:InstanceId,State:State.Name,Name:Tags[?Key==`Name`]|[0].Value}' \
+  --output table
+```
 
-## Reproducibility Checklist
+Destroy Terraform-managed infrastructure:
 
-Before submitting, confirm that this folder supports the following:
+```bash
+cd terraform
+terraform destroy \
+  -var="netid=${NETID}" \
+  -var="aws_region=${AWS_REGION}" \
+  -var="project_name=${PROJECT_NAME}"
+cd ..
+```
 
-- [ ] `finetune_tinyllama_qlora_50K.py` runs successfully on a small sample.
-- [ ] `finetune_tinyllama_qlora.py` runs the final training job.
-- [ ] `test_model.py` produces at least two base-vs-fine-tuned comparisons.
-- [ ] Training hyperparameters are recorded in the report.
-- [ ] Final adapter/model artifacts are uploaded to S3.
-- [ ] `GGUF_Script.py` creates a `.gguf` file.
-- [ ] Ollama can load and run the model as `cyber-soc-chatbot`.
-- [ ] A `curl` request returns a response from the model API.
-- [ ] OpenWebUI displays the fine-tuned model name.
-- [ ] Screenshots are captured for the report.
+Optional S3 cleanup after confirming nothing else is needed:
 
-## Approximate Cost Summary
+```bash
+aws s3 rm "s3://${S3_BUCKET}" --recursive
+aws s3 rb "s3://${S3_BUCKET}"
+```
 
-| Service | Purpose | Approximate Cost Control |
-|---|---|---|
-| S3 | Store raw data, processed data, checkpoints, and GGUF model | Delete unused checkpoints and old intermediate files. |
-| EMR | Spark preprocessing | Terminate cluster immediately after preprocessing. |
-| EC2 `g4dn.xlarge` | Training or deployment testing | Stop or terminate when not actively testing. |
-| EBS | EC2 model/checkpoint storage | Delete unattached volumes after teardown. |
-| Data transfer | Moving model/data artifacts | Keep artifacts in the same AWS region where possible. |
-| Google Colab | Optional fine-tuning environment | Free tier may be sufficient for small QLoRA runs. |
+## 16. Troubleshooting
 
-## Troubleshooting
+### Terraform variables are missing
 
-### CUDA out of memory
+List variables expected by the Terraform files:
 
-Reduce one or more of the following:
+```bash
+grep -R "variable " terraform
+```
+
+Then pass the required values with `-var` or a `.tfvars` file.
+
+### EMR step fails immediately
+
+Check the step logs:
+
+```bash
+aws emr list-steps --cluster-id "${EMR_CLUSTER_ID}"
+aws emr describe-step --cluster-id "${EMR_CLUSTER_ID}" --step-id <STEP_ID>
+```
+
+Common issues:
+
+- Incorrect S3 path for the Spark script.
+- Missing IAM permissions for S3 read/write.
+- Dataset schema does not match the preprocessing script.
+
+### CUDA out of memory during fine-tuning
+
+Reduce memory use:
 
 ```bash
 --per_device_train_batch_size 1
+--gradient_accumulation_steps 16
 --max_seq_length 1024
 --lora_r 8
 ```
 
 Also confirm 4-bit quantization is enabled in the training script.
 
-### Dataset schema error
-
-Print one row from the JSONL file:
-
-```bash
-head -n 1 ./data/train.jsonl
-```
-
-Confirm the script expects the same column names used in the JSONL file.
-
-### Ollama cannot find GGUF model
-
-Confirm the GGUF path in `Modelfile` is relative to the directory where `ollama create` is executed:
-
-```bash
-cd ~/models/cyber-soc
-ls -lh
-ollama create cyber-soc-chatbot -f Modelfile
-```
-
 ### OpenWebUI cannot connect to Ollama
 
-Check that Ollama is running:
+Check Ollama locally:
 
 ```bash
 curl http://localhost:11434/api/tags
 ```
 
-Then restart OpenWebUI:
+Restart OpenWebUI:
 
 ```bash
 docker restart open-webui
 ```
 
-## Submission Notes
+Check container logs:
 
-Include the following evidence in the final report:
+```bash
+docker logs --tail 100 open-webui
+```
 
-1. Fine-tuning setup: model, hardware, QLoRA/PEFT method, and hyperparameters.
-2. Training output or loss curve.
-3. At least two prompt comparisons between the base and fine-tuned model.
-4. Terminal screenshot showing Ollama serving `cyber-soc-chatbot`.
-5. Screenshot of the `curl` response from the Ollama API.
-6. Browser screenshot of OpenWebUI showing the fine-tuned model name.
-7. Sample conversation screenshot from OpenWebUI.
+## License and Attribution
+
+Document the licenses for the selected base model and dataset in the final report. Also include links to the model and dataset sources used for training.
