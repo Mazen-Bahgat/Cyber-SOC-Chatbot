@@ -103,11 +103,6 @@ Cyber-SOC-Chatbot/
 │   │   ├── finetune_tinyllama_qlora_50K.py        # QLoRA fine-tuning script for the final 50K training run.
 │   │   ├── GGUF_Script.py                         # Exports the fine-tuned LoRA adapter to GGUF format for Ollama deployment.
 │   │   └── test_model.py                          # Tests the fine-tuned model locally using sample cybersecurity prompts.
-│   │
-│   └── models/                                    # Stores exported GGUF model artifacts before upload to S3 or Ollama deployment.
-│       └── cyber-soc-tinyllama-gguf-50k_gguf/     # Final GGUF deployment folder containing the Ollama Modelfile and quantized model.
-│           ├── Modelfile                          # Ollama model definition used to create the deployed chatbot model.
-│           └── tinyllama-chat.Q4_K_M.gguf         # Quantized fine-tuned TinyLlama model used by Ollama.
 │
 ├── cyber-soc-tinyllama-lora-10k/                  # LoRA adapter from the initial 10K-sample fine-tuning validation run.
 │   ├── adapter_config.json                        # Configuration describing the LoRA adapter architecture and settings.
